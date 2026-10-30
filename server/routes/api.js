@@ -130,10 +130,11 @@ router.get('/events/:fleetId', verifyAuthToken, async (req, res) => {
 /**
  * POST /api/events/:id/resolve — Marks a disruption event as resolved
  */
-router.post('/events/:id/resolve', verifyAuthToken, requireDispatcher, async (req, res) => {
+router.post('/events/:id/resolve', verifyAuthToken, async (req, res) => {
     try {
         const resolved = await resolveDisruptionEvent(req.params.id);
-        res.json({ event: resolved });
+        const snapshot = await getFleetRoutesAndStops(resolved?.fleet_id || DEFAULT_FLEET_ID);
+        res.json({ event: resolved, snapshot });
     } catch (err) {
         res.status(500).json({ error: 'Failed to resolve event', details: err.message });
     }

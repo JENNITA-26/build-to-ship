@@ -626,6 +626,9 @@ export async function approveCustomerNotification(notificationId, approvedMessag
 }
 
 export async function resolveEventById(eventId) {
+  const localEv = clientFallbackStore.events.find((e) => e.id === eventId);
+  if (localEv) localEv.resolved = true;
+
   try {
     const res = await fetch(`${API_BASE_URL}/api/events/${eventId}/resolve`, {
       method: 'POST',
@@ -635,9 +638,7 @@ export async function resolveEventById(eventId) {
   } catch {
     // fallback
   }
-  const ev = clientFallbackStore.events.find((e) => e.id === eventId);
-  if (ev) ev.resolved = true;
-  return { event: ev };
+  return { event: localEv || { id: eventId, resolved: true } };
 }
 
 export async function resetSimulationBaseline(fleetId = DEFAULT_FLEET_ID) {

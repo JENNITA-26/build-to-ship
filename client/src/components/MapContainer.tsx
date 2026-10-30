@@ -109,6 +109,7 @@ interface MapContainerProps {
   events: any[];
   selectedRouteId?: string | null;
   onSelectRoute?: (routeId: string) => void;
+  onResolveEvent?: (eventId: string) => void;
   heightClass?: string;
 }
 
@@ -118,6 +119,7 @@ export default function MapContainer({
   events = [],
   selectedRouteId = null,
   onSelectRoute,
+  onResolveEvent,
   heightClass = 'h-[520px]'
 }: MapContainerProps) {
   const mapElRef = useRef<HTMLDivElement | null>(null);
@@ -272,12 +274,30 @@ export default function MapContainer({
       const dMarker = L.marker([ev.lat, ev.lng], {
         icon: createDisruptionIcon(ev.event_type)
       });
-      dMarker.bindPopup(`
-        <div style="min-width:195px;font-family:Inter,sans-serif;font-size:12px;">
-          <div style="font-weight:700;color:#f87171;text-transform:uppercase;">Disruption: ${String(ev.event_type).replace('_', ' ')}</div>
-          <div style="color:#f1f5f9;margin-top:4px;">${ev.description}</div>
-        </div>
-      `);
+
+      const popupEl = document.createElement('div');
+      popupEl.style.minWidth = '205px';
+      popupEl.style.fontFamily = 'Inter,sans-serif';
+      popupEl.style.fontSize = '12px';
+      popupEl.innerHTML = `
+        <div style="font-weight:700;color:#f87171;text-transform:uppercase;">Disruption: ${String(ev.event_type).replace('_', ' ')}</div>
+        <div style="color:#f1f5f9;margin-top:4px;line-height:1.4;">${ev.description}</div>
+      `;
+
+      if (onResolveEvent) {
+        const resolveBtn = document.createElement('button');
+        resolveBtn.type = 'button';
+        resolveBtn.textContent = '✓ Acknowledge & Resolve';
+        resolveBtn.style.cssText =
+          'margin-top:8px;width:100%;padding:5px 10px;border-radius:6px;background:rgba(16,185,129,0.2);border:1px solid rgba(16,185,129,0.5);color:#6ee7b7;font-weight:700;font-size:11px;cursor:pointer;';
+        resolveBtn.onclick = () => {
+          map.closePopup();
+          onResolveEvent(ev.id);
+        };
+        popupEl.appendChild(resolveBtn);
+      }
+
+      dMarker.bindPopup(popupEl);
       dMarker.addTo(group);
     });
 
@@ -291,7 +311,7 @@ export default function MapContainer({
         // ignore bounds error
       }
     }
-  }, [visibleRoutes, vehicles, activeEvents, selectedRouteId, onSelectRoute]);
+  }, [visibleRoutes, vehicles, activeEvents, selectedRouteId, onSelectRoute, onResolveEvent]);
 
   return (
     <div

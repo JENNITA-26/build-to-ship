@@ -37,6 +37,7 @@ export default function DisruptionsPage() {
             routes={routes}
             vehicles={vehicles}
             events={visibleEvents}
+            onResolveEvent={isDispatcher ? handleResolveDisruption : undefined}
             heightClass="h-[340px]"
           />
 

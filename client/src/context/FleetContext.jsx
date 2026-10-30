@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect, useCallback, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import {
   DEFAULT_FLEET_ID,
   fetchFleetSnapshot,
@@ -85,6 +85,7 @@ export function FleetProvider({ children }) {
   const [agentBusy, setAgentBusy] = useState(false);
   const [lastAgentReport, setLastAgentReport] = useState(null);
   const [realtimeConnected, setRealtimeConnected] = useState(false);
+  const resolvedIdsRef = useRef(new Set());
 
   const fleetId = user?.fleetId || DEFAULT_FLEET_ID;
 
@@ -99,7 +100,11 @@ export function FleetProvider({ children }) {
 
       setAllRoutes(snapshot.routes || []);
       setAllVehicles(snapshot.vehicles || []);
-      setEvents(snapshot.events || []);
+      setEvents(
+        (snapshot.events || []).map((ev) =>
+          resolvedIdsRef.current.has(ev.id) ? { ...ev, resolved: true } : ev
+        )
+      );
       setRawPendingNotifications(notifData.pending || []);
       setRawAllNotifications(notifData.all || []);
       setTraces(traceData.traces || []);
@@ -265,13 +270,31 @@ export function FleetProvider({ children }) {
   };
 
   const handleResolveDisruption = async (eventId) => {
-    await resolveEventById(eventId);
-    await refreshAllData();
+    resolvedIdsRef.current.add(eventId);
+    // Optimistically mark resolved immediately so map & alerts update at 0ms
+    setEvents((prev) =>
+      prev.map((ev) => (ev.id === eventId ? { ...ev, resolved: true } : ev))
+    );
+    setLastAgentReport((prev) => (prev?.event?.id === eventId ? null : prev));
+
+    const res = await resolveEventById(eventId);
+    if (res?.snapshot) {
+      setAllRoutes(res.snapshot.routes || []);
+      setAllVehicles(res.snapshot.vehicles || []);
+      setEvents(
+        (res.snapshot.events || []).map((ev) =>
+          resolvedIdsRef.current.has(ev.id) ? { ...ev, resolved: true } : ev
+        )
+      );
+    } else {
+      await refreshAllData();
+    }
   };
 
   const handleResetSimulation = async () => {
     setAgentBusy(true);
     try {
+      resolvedIdsRef.current.clear();
       await resetSimulationBaseline(fleetId);
       setLastAgentReport(null);
       await refreshAllData();

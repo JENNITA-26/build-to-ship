@@ -397,7 +397,8 @@ function createInitialSeedState(fleetId = DEFAULT_FLEET_ID) {
         disruption_events,
         decision_traces,
         customer_notifications,
-        routeGeometries: new Map()
+        routeGeometries: new Map(),
+        resolvedEventIds: new Set(['55555555-5555-5555-5555-555555555501'])
     };
 }
 
@@ -481,7 +482,19 @@ export async function resetMemoryStore(fleetId = DEFAULT_FLEET_ID) {
     memoryStore.disruption_events = fresh.disruption_events;
     memoryStore.decision_traces = fresh.decision_traces;
     memoryStore.customer_notifications = fresh.customer_notifications;
+    memoryStore.resolvedEventIds = fresh.resolvedEventIds;
     memoryStore.routeGeometries.clear();
+    if (isSupabaseConfigured()) {
+        try {
+            const supabase = getSupabaseAdmin();
+            await supabase
+                .from('disruption_events')
+                .update({ resolved: true })
+                .eq('fleet_id', fleetId);
+        } catch {
+            // ignore
+        }
+    }
     await ensureSupabaseSeeded(fleetId);
     broadcastRealtimeEvent(fleetId, 'fleet_reset', { fleetId });
     return fresh;
@@ -494,7 +507,10 @@ export async function getFleetRoutesAndStops(fleetId = DEFAULT_FLEET_ID) {
     let vehicles = memoryStore.vehicles;
     let routes = memoryStore.routes;
     let stops = memoryStore.stops;
-    let events = memoryStore.disruption_events;
+    let events = memoryStore.disruption_events.map(ev => ({
+        ...ev,
+        resolved: Boolean(ev.resolved || memoryStore.resolvedEventIds.has(ev.id))
+    }));
 
     if (isSupabaseConfigured()) {
         try {
@@ -513,10 +529,10 @@ export async function getFleetRoutesAndStops(fleetId = DEFAULT_FLEET_ID) {
                     vehicles = validChennaiVehicles.map(v => {
                         const localMatch = memoryStore.vehicles.find(mv => mv.id === v.id);
                         return {
-                            ...localMatch,
                             ...v,
-                            driver_name: v.driver_name || localMatch?.driver_name || 'Assigned Driver',
-                            vehicle_type: v.vehicle_type || localMatch?.vehicle_type || 'Van'
+                            ...localMatch,
+                            driver_name: localMatch?.driver_name || v.driver_name || 'Assigned Driver',
+                            vehicle_type: localMatch?.vehicle_type || v.vehicle_type || 'Van'
                         };
                     });
                 }
@@ -534,16 +550,16 @@ export async function getFleetRoutesAndStops(fleetId = DEFAULT_FLEET_ID) {
                     routes = rRes.data.map(r => {
                         const localRoute = memoryStore.routes.find(mr => mr.id === r.id);
                         return {
-                            ...localRoute,
                             ...r,
+                            ...localRoute,
                             name: localRoute?.name || r.name
                         };
                     });
                     stops = validChennaiStops.map(s => {
                         const localStop = memoryStore.stops.find(ms => ms.id === s.id);
                         return {
-                            ...localStop,
                             ...s,
+                            ...localStop,
                             previous_sequence_order: localStop?.previous_sequence_order
                         };
                     });
@@ -551,18 +567,35 @@ export async function getFleetRoutesAndStops(fleetId = DEFAULT_FLEET_ID) {
             }
             if (!eRes.error && eRes.data && eRes.data.length > 0) {
                 const validChennaiEvents = eRes.data.filter(ev => ev.lat == null || isChennaiCoord(ev.lat, ev.lng));
-                if (validChennaiEvents.length > 0) {
-                    events = validChennaiEvents.map(ev => {
-                        const localEv = memoryStore.disruption_events.find(me => me.id === ev.id);
-                        return {
-                            ...localEv,
-                            ...ev,
-                            reported_by_role: localEv?.reported_by_role || 'dispatcher',
-                            reported_by_name: localEv?.reported_by_name || null,
-                            vehicle_name: localEv?.vehicle_name || null
-                        };
+                const mergedMap = new Map();
+
+                for (const localEv of memoryStore.disruption_events) {
+                    mergedMap.set(localEv.id, {
+                        ...localEv,
+                        resolved: Boolean(localEv.resolved || memoryStore.resolvedEventIds.has(localEv.id))
                     });
                 }
+
+                for (const supaEv of validChennaiEvents) {
+                    const localEv = mergedMap.get(supaEv.id);
+                    const isResolved = Boolean(
+                        supaEv.resolved ||
+                        localEv?.resolved ||
+                        memoryStore.resolvedEventIds.has(supaEv.id)
+                    );
+                    mergedMap.set(supaEv.id, {
+                        ...supaEv,
+                        ...localEv,
+                        resolved: isResolved,
+                        reported_by_role: localEv?.reported_by_role || supaEv.reported_by_role || 'dispatcher',
+                        reported_by_name: localEv?.reported_by_name || supaEv.reported_by_name || null,
+                        vehicle_name: localEv?.vehicle_name || supaEv.vehicle_name || null
+                    });
+                }
+
+                events = Array.from(mergedMap.values()).sort(
+                    (a, b) => new Date(b.created_at) - new Date(a.created_at)
+                );
             }
         } catch (err) {
             console.warn('[DataStore] Using local store fallback for getFleetRoutesAndStops:', err.message);
@@ -955,25 +988,50 @@ export async function getDecisionTracesForFleet(fleetId = DEFAULT_FLEET_ID) {
  * Resolve a disruption event
  */
 export async function resolveDisruptionEvent(eventId) {
+    memoryStore.resolvedEventIds.add(eventId);
+    memoryStore.routeGeometries.clear();
+
     const idx = memoryStore.disruption_events.findIndex(e => e.id === eventId);
     let event = null;
     if (idx !== -1) {
-        memoryStore.disruption_events[idx].resolved = true;
+        memoryStore.disruption_events[idx] = {
+            ...memoryStore.disruption_events[idx],
+            resolved: true
+        };
         event = memoryStore.disruption_events[idx];
-        memoryStore.routeGeometries.clear();
+    }
+
+    // If this was a breakdown event, restore the immobilized vehicle to active if no other active breakdown exists
+    if (event?.vehicle_id) {
+        const hasOtherActiveBreakdown = memoryStore.disruption_events.some(
+            e => !e.resolved && !memoryStore.resolvedEventIds.has(e.id) && e.vehicle_id === event.vehicle_id && e.event_type === 'breakdown'
+        );
+        if (!hasOtherActiveBreakdown) {
+            const vIdx = memoryStore.vehicles.findIndex(v => v.id === event.vehicle_id);
+            if (vIdx !== -1 && memoryStore.vehicles[vIdx].status === 'broken_down') {
+                memoryStore.vehicles[vIdx].status = 'active';
+            }
+        }
     }
 
     if (isSupabaseConfigured()) {
         try {
             const supabase = getSupabaseAdmin();
-            await supabase.from('disruption_events').update({ resolved: true }).eq('id', eventId);
+            const { data } = await supabase
+                .from('disruption_events')
+                .update({ resolved: true })
+                .eq('id', eventId)
+                .select()
+                .single();
+            if (!event && data) {
+                event = { ...data, resolved: true };
+            }
         } catch (err) {
             console.warn('[DataStore] Supabase resolveDisruptionEvent fallback:', err.message);
         }
     }
 
-    if (event) {
-        broadcastRealtimeEvent(event.fleet_id, 'disruption_resolved', event);
-    }
-    return event;
+    const resolvedPayload = event || { id: eventId, fleet_id: DEFAULT_FLEET_ID, resolved: true };
+    broadcastRealtimeEvent(resolvedPayload.fleet_id || DEFAULT_FLEET_ID, 'disruption_resolved', resolvedPayload);
+    return resolvedPayload;
 }

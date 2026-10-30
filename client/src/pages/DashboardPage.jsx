@@ -297,54 +297,80 @@ export default function DashboardPage() {
   // ============================================================================
   return (
     <div className="space-y-6">
-      {/* Instant Central Dispatch Alert Banner when a Driver logs a roadblock/issue from the field */}
-      {activeDriverAlerts.length > 0 && (
+      {/* Instant Central Dispatch Alert Banner for Active Disruptions & Driver Field Reports */}
+      {activeDisruptions.length > 0 && (
         <div className="space-y-2.5">
-          {activeDriverAlerts.map((alertEv) => (
-            <div
-              key={alertEv.id}
-              className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border-2 border-rose-500/70 bg-rose-950/40 px-5 py-4 shadow-xl shadow-rose-950/30"
-            >
-              <div className="flex items-start gap-3.5">
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-rose-500 text-white shadow-lg shadow-rose-500/40">
-                  <Radio className="h-5 w-5 animate-ping" />
-                </div>
-                <div>
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded bg-rose-500 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white">
-                      LIVE DRIVER FIELD ALERT
-                    </span>
-                    <span className="text-sm font-bold text-white">
-                      {alertEv.reported_by_name || 'Field Driver'} •{' '}
-                      {alertEv.vehicle_name || 'Active Fleet Vehicle'}
-                    </span>
-                    <span className="font-mono text-xs text-rose-300">
-                      {new Date(alertEv.created_at).toLocaleTimeString()}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-xs text-rose-100 leading-relaxed">
-                    {alertEv.description}
-                  </p>
-                </div>
-              </div>
+          {activeDisruptions.map((alertEv) => {
+            const isDriverReport =
+              alertEv.reported_by_role === 'driver' ||
+              String(alertEv.description || '').includes('[Driver Field Report');
 
-              <div className="flex items-center gap-2">
-                <Link
-                  to="/approvals"
-                  className="rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-indigo-500 transition shadow-lg"
-                >
-                  Review Customer ETA Texts ({pendingNotifications.length})
-                </Link>
-                <button
-                  type="button"
-                  onClick={() => handleResolveDisruption(alertEv.id)}
-                  className="inline-flex items-center gap-1 rounded-xl border border-emerald-500/50 bg-emerald-500/20 px-3.5 py-2 text-xs font-bold text-emerald-300 hover:bg-emerald-500/30 transition"
-                >
-                  <CheckCircle2 className="h-3.5 w-3.5" /> Acknowledge & Resolve
-                </button>
+            return (
+              <div
+                key={alertEv.id}
+                className={`flex flex-wrap items-center justify-between gap-4 rounded-2xl border-2 px-5 py-4 shadow-xl ${
+                  isDriverReport
+                    ? 'border-rose-500/70 bg-rose-950/40 shadow-rose-950/30'
+                    : 'border-amber-500/60 bg-amber-950/30 shadow-amber-950/20'
+                }`}
+              >
+                <div className="flex items-start gap-3.5">
+                  <div
+                    className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white shadow-lg ${
+                      isDriverReport
+                        ? 'bg-rose-500 shadow-rose-500/40'
+                        : 'bg-amber-500 shadow-amber-500/30'
+                    }`}
+                  >
+                    {isDriverReport ? (
+                      <Radio className="h-5 w-5 animate-ping" />
+                    ) : (
+                      <AlertTriangle className="h-5 w-5" />
+                    )}
+                  </div>
+                  <div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span
+                        className={`rounded px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wider text-white ${
+                          isDriverReport ? 'bg-rose-500' : 'bg-amber-600'
+                        }`}
+                      >
+                        {isDriverReport
+                          ? 'LIVE DRIVER FIELD ALERT'
+                          : `ACTIVE DISRUPTION • ${String(alertEv.event_type || '').replace('_', ' ')}`}
+                      </span>
+                      <span className="text-sm font-bold text-white">
+                        {alertEv.reported_by_name || 'Chennai Fleet Dispatch'} •{' '}
+                        {alertEv.vehicle_name || 'Active Fleet Route'}
+                      </span>
+                      <span className="font-mono text-xs text-slate-300">
+                        {new Date(alertEv.created_at).toLocaleTimeString()}
+                      </span>
+                    </div>
+                    <p className="mt-1 text-xs text-slate-100 leading-relaxed">
+                      {alertEv.description}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <Link
+                    to="/approvals"
+                    className="rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-bold text-white hover:bg-indigo-500 transition shadow-lg"
+                  >
+                    Review Customer ETA Texts ({pendingNotifications.length})
+                  </Link>
+                  <button
+                    type="button"
+                    onClick={() => handleResolveDisruption(alertEv.id)}
+                    className="inline-flex items-center gap-1 rounded-xl border border-emerald-500/50 bg-emerald-500/20 px-3.5 py-2 text-xs font-bold text-emerald-300 hover:bg-emerald-500/30 transition"
+                  >
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Acknowledge & Resolve
+                  </button>
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -519,6 +545,7 @@ export default function DashboardPage() {
             events={events}
             selectedRouteId={selectedRouteId}
             onSelectRoute={(id) => setSelectedRouteId(id)}
+            onResolveEvent={handleResolveDisruption}
             heightClass="h-[520px]"
           />
 
