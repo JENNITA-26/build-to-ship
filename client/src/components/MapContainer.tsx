@@ -172,9 +172,11 @@ export default function MapContainer({
   // Render dynamic layers (routes, stops, vehicles, disruption circles)
   useEffect(() => {
     const group = layerGroupRef.current;
-    if (!group) return;
+    const map = mapInstanceRef.current;
+    if (!group || !map) return;
 
     group.clearLayers();
+    const boundsPoints: [number, number][] = [];
 
     // 1. Route polylines & stop pins
     visibleRoutes.forEach((route, idx) => {
@@ -198,6 +200,7 @@ export default function MapContainer({
 
       (route.stops || []).forEach((stop: any) => {
         if (stop.lat == null || stop.lng == null) return;
+        boundsPoints.push([Number(stop.lat), Number(stop.lng)]);
         const marker = L.marker([stop.lat, stop.lng], {
           icon: createStopIcon(
             stop.sequence_order,
@@ -277,6 +280,17 @@ export default function MapContainer({
       `);
       dMarker.addTo(group);
     });
+
+    if (boundsPoints.length > 0) {
+      try {
+        const bounds = L.latLngBounds(boundsPoints);
+        if (bounds.isValid()) {
+          map.fitBounds(bounds, { padding: [40, 40], maxZoom: 13 });
+        }
+      } catch {
+        // ignore bounds error
+      }
+    }
   }, [visibleRoutes, vehicles, activeEvents, selectedRouteId, onSelectRoute]);
 
   return (

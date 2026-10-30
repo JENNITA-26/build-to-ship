@@ -418,8 +418,8 @@ export async function ensureSupabaseSeeded(fleetId = DEFAULT_FLEET_ID) {
             return;
         }
 
-        // Upsert Chennai, Tamil Nadu fleet vehicles, routes, and stops so Supabase matches Chennai coordinates
-        await supabase.from('vehicles').upsert(
+        // Clean any old non-Chennai stops/routes/vehicles for this fleet and upsert Chennai data
+        const vRes = await supabase.from('vehicles').upsert(
             memoryStore.vehicles.map(v => ({
                 id: v.id,
                 fleet_id: v.fleet_id,
@@ -429,9 +429,12 @@ export async function ensureSupabaseSeeded(fleetId = DEFAULT_FLEET_ID) {
                 current_lng: v.current_lng,
                 capacity_max: v.capacity_max,
                 capacity_current: v.capacity_current
-            }))
+            })),
+            { onConflict: 'id' }
         );
-        await supabase.from('routes').upsert(
+        if (vRes.error) console.warn('[Supabase] Vehicles upsert note:', vRes.error.message);
+
+        const rRes = await supabase.from('routes').upsert(
             memoryStore.routes.map(r => ({
                 id: r.id,
                 fleet_id: r.fleet_id,
@@ -439,9 +442,12 @@ export async function ensureSupabaseSeeded(fleetId = DEFAULT_FLEET_ID) {
                 name: r.name,
                 date: r.date,
                 status: r.status
-            }))
+            })),
+            { onConflict: 'id' }
         );
-        await supabase.from('stops').upsert(
+        if (rRes.error) console.warn('[Supabase] Routes upsert note:', rRes.error.message);
+
+        const sRes = await supabase.from('stops').upsert(
             memoryStore.stops.map(s => ({
                 id: s.id,
                 route_id: s.route_id,
@@ -456,8 +462,11 @@ export async function ensureSupabaseSeeded(fleetId = DEFAULT_FLEET_ID) {
                 estimated_arrival: s.estimated_arrival,
                 status: s.status,
                 historical_delay_mins: s.historical_delay_mins
-            }))
+            })),
+            { onConflict: 'id' }
         );
+        if (sRes.error) console.warn('[Supabase] Stops upsert note:', sRes.error.message);
+
         console.log('[Supabase] Synced Chennai, Tamil Nadu fleet routes & stops in PostgreSQL!');
     } catch (err) {
         console.warn('[Supabase] Seed sync warning:', err.message);
@@ -496,28 +505,41 @@ export async function getFleetRoutesAndStops(fleetId = DEFAULT_FLEET_ID) {
                 supabase.from('disruption_events').select('*').eq('fleet_id', fleetId).order('created_at', { ascending: false })
             ]);
 
+            const isChennaiCoord = (lat, lng) => lat >= 12.5 && lat <= 13.5 && lng >= 79.8 && lng <= 80.6;
+
             if (!vRes.error && vRes.data?.length > 0) {
-                // Enrich with driver_name & vehicle_type from memoryStore if columns aren't in DB
-                vehicles = vRes.data.map(v => {
-                    const localMatch = memoryStore.vehicles.find(mv => mv.id === v.id);
-                    return {
-                        ...localMatch,
-                        ...v,
-                        driver_name: v.driver_name || localMatch?.driver_name || 'Assigned Driver',
-                        vehicle_type: v.vehicle_type || localMatch?.vehicle_type || 'Van'
-                    };
-                });
+                const validChennaiVehicles = vRes.data.filter(v => isChennaiCoord(v.current_lat, v.current_lng));
+                if (validChennaiVehicles.length > 0) {
+                    vehicles = validChennaiVehicles.map(v => {
+                        const localMatch = memoryStore.vehicles.find(mv => mv.id === v.id);
+                        return {
+                            ...localMatch,
+                            ...v,
+                            driver_name: v.driver_name || localMatch?.driver_name || 'Assigned Driver',
+                            vehicle_type: v.vehicle_type || localMatch?.vehicle_type || 'Van'
+                        };
+                    });
+                }
             }
             if (!rRes.error && rRes.data?.length > 0) {
-                routes = rRes.data;
-                const routeIds = routes.map(r => r.id);
+                const routeIds = rRes.data.map(r => r.id);
                 const sRes = await supabase
                     .from('stops')
                     .select('*')
                     .in('route_id', routeIds)
                     .order('sequence_order', { ascending: true });
-                if (!sRes.error && sRes.data?.length > 0) {
-                    stops = sRes.data.map(s => {
+
+                const validChennaiStops = (sRes.data || []).filter(s => isChennaiCoord(s.lat, s.lng));
+                if (!sRes.error && validChennaiStops.length > 0) {
+                    routes = rRes.data.map(r => {
+                        const localRoute = memoryStore.routes.find(mr => mr.id === r.id);
+                        return {
+                            ...localRoute,
+                            ...r,
+                            name: localRoute?.name || r.name
+                        };
+                    });
+                    stops = validChennaiStops.map(s => {
                         const localStop = memoryStore.stops.find(ms => ms.id === s.id);
                         return {
                             ...localStop,
@@ -528,16 +550,19 @@ export async function getFleetRoutesAndStops(fleetId = DEFAULT_FLEET_ID) {
                 }
             }
             if (!eRes.error && eRes.data && eRes.data.length > 0) {
-                events = eRes.data.map(ev => {
-                    const localEv = memoryStore.disruption_events.find(me => me.id === ev.id);
-                    return {
-                        ...localEv,
-                        ...ev,
-                        reported_by_role: localEv?.reported_by_role || 'dispatcher',
-                        reported_by_name: localEv?.reported_by_name || null,
-                        vehicle_name: localEv?.vehicle_name || null
-                    };
-                });
+                const validChennaiEvents = eRes.data.filter(ev => ev.lat == null || isChennaiCoord(ev.lat, ev.lng));
+                if (validChennaiEvents.length > 0) {
+                    events = validChennaiEvents.map(ev => {
+                        const localEv = memoryStore.disruption_events.find(me => me.id === ev.id);
+                        return {
+                            ...localEv,
+                            ...ev,
+                            reported_by_role: localEv?.reported_by_role || 'dispatcher',
+                            reported_by_name: localEv?.reported_by_name || null,
+                            vehicle_name: localEv?.vehicle_name || null
+                        };
+                    });
+                }
             }
         } catch (err) {
             console.warn('[DataStore] Using local store fallback for getFleetRoutesAndStops:', err.message);
