@@ -25,7 +25,7 @@ export const DRIVER_VEHICLE_OPTIONS = [
     routeId: '33333333-3333-3333-3333-333333333301',
     routeName: 'Route 1 — Anna Salai, T. Nagar & Nungambakkam',
     driverName: 'Karthik Sundaram',
-    driverEmail: 'driver.van@routerescue.ai'
+    driverEmail: 'driver.van@gmail.com'
   },
   {
     vehicleType: 'Cargo Truck',
@@ -35,7 +35,7 @@ export const DRIVER_VEHICLE_OPTIONS = [
     routeId: '33333333-3333-3333-3333-333333333302',
     routeName: 'Route 2 — Guindy, Velachery & OMR IT Corridor',
     driverName: 'Anitha Krishnan',
-    driverEmail: 'driver.truck@routerescue.ai'
+    driverEmail: 'driver.truck@gmail.com'
   },
   {
     vehicleType: 'Electric Bike',
@@ -45,13 +45,13 @@ export const DRIVER_VEHICLE_OPTIONS = [
     routeId: '33333333-3333-3333-3333-333333333303',
     routeName: 'Route 3 — Mylapore, Adyar & Besant Nagar',
     driverName: 'Pradeep Kumar',
-    driverEmail: 'driver.ebike@routerescue.ai'
+    driverEmail: 'driver.ebike@gmail.com'
   }
 ];
 
 const DEFAULT_USER = {
   id: '00000000-0000-0000-0000-000000000001',
-  email: 'dispatcher@routerescue.ai',
+  email: 'dispatcher@gmail.com',
   fullName: 'Sarah Chen',
   role: 'dispatcher',
   fleetId: DEFAULT_FLEET_ID,

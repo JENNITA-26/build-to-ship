@@ -9,7 +9,8 @@ import {
   Lock,
   Mail,
   Bike,
-  Car
+  Car,
+  AlertCircle
 } from 'lucide-react';
 import { useFleet, DRIVER_VEHICLE_OPTIONS } from '../context/FleetContext.jsx';
 import { supabase } from '../services/supabaseClient.js';
@@ -20,16 +21,17 @@ export default function LoginPage() {
 
   const [selectedRole, setSelectedRole] = useState('dispatcher');
   const [selectedVehicleType, setSelectedVehicleType] = useState('Van');
-  const [email, setEmail] = useState('dispatcher@routerescue.ai');
-  const [password, setPassword] = useState('••••••••••••');
+  const [email, setEmail] = useState('dispatcher@gmail.com');
+  const [password, setPassword] = useState('1234567');
   const [fullName, setFullName] = useState('Sarah Chen');
   const [loading, setLoading] = useState(false);
   const [authError, setAuthError] = useState(null);
 
   const handleRoleSwitch = (role) => {
     setSelectedRole(role);
+    setAuthError(null);
     if (role === 'dispatcher') {
-      setEmail('dispatcher@routerescue.ai');
+      setEmail('dispatcher@gmail.com');
       setFullName('Sarah Chen (Lead Dispatcher)');
     } else {
       const preset =
@@ -44,18 +46,35 @@ export default function LoginPage() {
     setSelectedVehicleType(vehicleOption.vehicleType);
     setEmail(vehicleOption.driverEmail);
     setFullName(`${vehicleOption.driverName} (${vehicleOption.label} Driver)`);
+    setAuthError(null);
   };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    setLoading(true);
     setAuthError(null);
 
+    const trimmedEmail = email.trim().toLowerCase();
+    const trimmedPassword = password.trim();
+
+    // 1. Validate that email contains @gmail.com and has a username prefix before @gmail.com
+    if (!trimmedEmail.endsWith('@gmail.com') || trimmedEmail.length <= '@gmail.com'.length) {
+      setAuthError('Invalid email: Please enter a valid Gmail address ending with @gmail.com');
+      return;
+    }
+
+    // 2. Validate that password is more than 6 digits/characters
+    if (trimmedPassword.length <= 6) {
+      setAuthError('Invalid password: Password must be more than 6 digits long (at least 7 characters).');
+      return;
+    }
+
+    setLoading(true);
+
     try {
-      if (supabase && password !== '••••••••••••') {
+      if (supabase && trimmedPassword !== '1234567') {
         const { data, error } = await supabase.auth.signInWithPassword({
-          email,
-          password
+          email: trimmedEmail,
+          password: trimmedPassword
         });
         if (!error && data?.session) {
           loginWithRole(
@@ -70,7 +89,7 @@ export default function LoginPage() {
         }
       }
 
-      loginWithRole(selectedRole, email, fullName, undefined, selectedVehicleType);
+      loginWithRole(selectedRole, trimmedEmail, fullName, undefined, selectedVehicleType);
       navigate('/dashboard');
     } catch (err) {
       setAuthError(err.message || 'Sign in failed');
@@ -206,10 +225,10 @@ export default function LoginPage() {
         )}
 
         {/* Login Form */}
-        <form onSubmit={handleSubmit} className="mt-5 space-y-4">
+        <form onSubmit={handleSubmit} noValidate className="mt-5 space-y-4">
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1">
-              Operator Email
+              Gmail Address <span className="text-slate-500">(must contain @gmail.com)</span>
             </label>
             <div className="relative">
               <Mail className="h-4 w-4 text-slate-500 absolute left-3 top-2.5" />
@@ -217,7 +236,11 @@ export default function LoginPage() {
                 type="email"
                 required
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                onChange={(e) => {
+                  setEmail(e.target.value);
+                  if (authError) setAuthError(null);
+                }}
+                placeholder="yourname@gmail.com"
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 pl-9 pr-3 py-2 text-xs text-white focus:border-indigo-500 focus:outline-none"
               />
             </div>
@@ -225,7 +248,7 @@ export default function LoginPage() {
 
           <div>
             <label className="block text-xs font-medium text-slate-300 mb-1">
-              Password / Auth Token
+              Password <span className="text-slate-500">(more than 6 digits)</span>
             </label>
             <div className="relative">
               <Lock className="h-4 w-4 text-slate-500 absolute left-3 top-2.5" />
@@ -233,15 +256,20 @@ export default function LoginPage() {
                 type="password"
                 required
                 value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                onChange={(e) => {
+                  setPassword(e.target.value);
+                  if (authError) setAuthError(null);
+                }}
+                placeholder="Enter > 6 digits"
                 className="w-full rounded-xl border border-slate-700 bg-slate-950 pl-9 pr-3 py-2 text-xs text-white focus:border-indigo-500 focus:outline-none"
               />
             </div>
           </div>
 
           {authError && (
-            <div className="rounded-xl border border-rose-500/40 bg-rose-500/10 p-2.5 text-xs text-rose-300">
-              {authError}
+            <div className="flex items-start gap-2 rounded-xl border border-rose-500/40 bg-rose-500/10 p-3 text-xs text-rose-300">
+              <AlertCircle className="h-4 w-4 shrink-0 mt-0.5 text-rose-400" />
+              <span>{authError}</span>
             </div>
           )}
 
