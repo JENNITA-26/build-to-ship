@@ -13,12 +13,11 @@ import {
   LogOut,
   Radio
 } from 'lucide-react';
-import { useFleet, DRIVER_VEHICLE_OPTIONS } from '../context/FleetContext.jsx';
+import { useFleet } from '../context/FleetContext.jsx';
 
 export default function Navbar() {
   const {
     user,
-    loginWithRole,
     logout,
     fleetId,
     pendingNotifications,
@@ -60,20 +59,6 @@ export default function Navbar() {
       : [])
   ];
 
-  const handleToggleRole = () => {
-    if (!user) return;
-    if (user.role === 'dispatcher') {
-      navigate('/login');
-    } else {
-      loginWithRole('dispatcher');
-      navigate('/dashboard');
-    }
-  };
-
-  const handleDriverVehicleChange = (newVehicleType: string) => {
-    loginWithRole('driver', undefined, undefined, undefined, newVehicleType);
-  };
-
   return (
     <header className="sticky top-0 z-40 border-b border-slate-800/80 bg-slate-950/90 backdrop-blur-md">
       <div className="mx-auto flex max-w-[1600px] items-center justify-between px-4 py-3 sm:px-6">
@@ -89,7 +74,7 @@ export default function Navbar() {
                   RouteRescue
                 </span>
                 <span className="rounded-md bg-indigo-500/15 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wider text-indigo-400 border border-indigo-500/30">
-                  {isDispatcher ? 'AI Dispatch Copilot' : `Driver • ${user?.vehicleType || 'Van'}`}
+                  {isDispatcher ? 'AI Dispatch Copilot' : 'Driver Portal'}
                 </span>
               </div>
               <div className="flex items-center gap-2 text-xs text-slate-400">
@@ -136,7 +121,7 @@ export default function Navbar() {
           })}
         </nav>
 
-        {/* Right Controls: Vehicle Selector (if Driver), Reset (if Dispatcher), Role Badge & Logout */}
+        {/* Right Controls: Vehicle Box (if Driver), Reset (if Dispatcher), Static Role Box & Sign Out */}
         <div className="flex items-center gap-2.5">
           {agentBusy && (
             <div className="hidden sm:flex items-center gap-2 rounded-lg bg-indigo-500/15 border border-indigo-500/30 px-3 py-1.5 text-xs font-medium text-indigo-300">
@@ -145,20 +130,12 @@ export default function Navbar() {
             </div>
           )}
 
-          {/* Driver Vehicle Selector Pill */}
+          {/* Normal Static Vehicle Type Box for Driver (No Dropdown) */}
           {!isDispatcher && user && (
-            <select
-              value={user.vehicleType || 'Van'}
-              onChange={(e) => handleDriverVehicleChange(e.target.value)}
-              title="Selected Vehicle Type"
-              className="rounded-lg border border-emerald-500/40 bg-slate-900 px-2.5 py-1.5 text-xs font-semibold text-emerald-300 focus:border-emerald-400 focus:outline-none"
-            >
-              {DRIVER_VEHICLE_OPTIONS.map((v) => (
-                <option key={v.vehicleType} value={v.vehicleType}>
-                  🚚 {v.label} ({v.vehicleName.split(' ')[0]} {v.vehicleName.split(' ')[1]})
-                </option>
-              ))}
-            </select>
+            <div className="flex items-center gap-1.5 rounded-lg border border-slate-700 bg-slate-900 px-3 py-1.5 text-xs font-semibold text-slate-200">
+              <Truck className="h-3.5 w-3.5 text-cyan-400" />
+              <span>{user.vehicleType || 'Van'}</span>
+            </div>
           )}
 
           {/* Reset Demo State (Dispatcher Only) */}
@@ -175,16 +152,13 @@ export default function Navbar() {
             </button>
           )}
 
-          {/* Role Badge */}
+          {/* Static Role Badge (Must Sign Out & Log In to Switch Role) */}
           {user && (
-            <button
-              type="button"
-              onClick={handleToggleRole}
-              title="Switch Role"
-              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition ${
+            <div
+              className={`flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold select-none ${
                 isDispatcher
-                  ? 'border-indigo-500/40 bg-indigo-500/15 text-indigo-300 hover:bg-indigo-500/25'
-                  : 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300 hover:bg-emerald-500/25'
+                  ? 'border-indigo-500/40 bg-indigo-500/15 text-indigo-300'
+                  : 'border-emerald-500/40 bg-emerald-500/15 text-emerald-300'
               }`}
             >
               {isDispatcher ? (
@@ -193,20 +167,21 @@ export default function Navbar() {
                 <UserCheck className="h-3.5 w-3.5 text-emerald-400" />
               )}
               <span className="uppercase tracking-wider">{user.role}</span>
-            </button>
+            </div>
           )}
 
-          {/* Sign out / Login page button */}
+          {/* Sign Out Button to return to /login */}
           <button
             type="button"
             onClick={() => {
               logout();
               navigate('/login');
             }}
-            title="Switch Account / Sign Out"
-            className="flex items-center gap-1 rounded-lg border border-slate-800 bg-slate-900 p-2 text-slate-400 hover:border-rose-500/40 hover:text-rose-400 transition"
+            title="Sign Out to Switch Role or Vehicle"
+            className="flex items-center gap-1.5 rounded-lg border border-slate-800 bg-slate-900 px-2.5 py-1.5 text-xs font-medium text-slate-300 hover:border-rose-500/40 hover:text-rose-400 transition"
           >
-            <LogOut className="h-4 w-4" />
+            <LogOut className="h-3.5 w-3.5" />
+            <span className="hidden sm:inline">Sign Out</span>
           </button>
         </div>
       </div>
